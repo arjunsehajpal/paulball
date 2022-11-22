@@ -1,0 +1,1 @@
+from paulball import score
