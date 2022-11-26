@@ -15,35 +15,29 @@ class PredictScoreline(object):
         neutral (bool, optional): whether the venue is neutral or not. Defaults to False.
     """
 
-    def __init__(self, home_team: str, away_team: str, neutral: bool = False):
+    def __init__(self):
+        pass
+
+    def __call__(self, home_team: str, away_team: str, neutral: bool = False):
         self.home_team = home_team
         self.away_team = away_team
         self.neutral = neutral
+        self.execute()
 
     def execute(self):
         """driver method"""
         results_df = get_data()
 
         # home and away team aggregated data
-        home_team_df = self.team_record_aggregation(
-            results_df, team_label="home", team_name=self.home_team
-        )
-        away_team_df = self.team_record_aggregation(
-            results_df, team_label="away", team_name=self.away_team
-        )
+        home_team_df = self.team_record_aggregation(results_df, team_label="home", team_name=self.home_team)
+        away_team_df = self.team_record_aggregation(results_df, team_label="away", team_name=self.away_team)
 
         # goal summaries
-        home_goals_dict = self.goal_summaries(
-            home_team_df, team_label="home", team_name=self.home_team
-        )
-        away_goals_dict = self.goal_summaries(
-            home_team_df, team_label="away", team_name=self.away_team
-        )
+        home_goals_dict = self.goal_summaries(home_team_df, team_label="home", team_name=self.home_team)
+        away_goals_dict = self.goal_summaries(away_team_df, team_label="away", team_name=self.away_team)
 
         # projected goals
-        projected_home_goals, projected_away_goals = self.projected_goals(
-            home_goals_dict, away_goals_dict
-        )
+        projected_home_goals, projected_away_goals = self.projected_goals(home_goals_dict, away_goals_dict)
         rich_print(
             "{} {:.2f}-{:.2f} {}".format(
                 self.home_team,
@@ -54,21 +48,13 @@ class PredictScoreline(object):
         )
 
         # probability distribution of number of goals that can be scored
-        home_goal_prob_df, home_goal_prob_list = self.teams_goals_probability(
-            projected_home_goals
-        )
-        away_goal_prob_df, away_goal_prob_list = self.teams_goals_probability(
-            projected_away_goals
-        )
+        home_goal_prob_df, home_goal_prob_list = self.teams_goals_probability(projected_home_goals)
+        away_goal_prob_df, away_goal_prob_list = self.teams_goals_probability(projected_away_goals)
 
         # scoreline matrix
-        expected_scoreline_df = self.expected_scoreline(
-            away_goal_prob_df, home_goal_prob_list
-        )
+        expected_scoreline_df = self.expected_scoreline(away_goal_prob_df, home_goal_prob_list)
 
-    def team_record_aggregation(
-        self, results_df: pd.DataFrame, team_label: str, team_name: str
-    ) -> pd.DataFrame:
+    def team_record_aggregation(self, results_df: pd.DataFrame, team_label: str, team_name: str) -> pd.DataFrame:
         """aggregates the goal scored and conceded by a Team
 
         Args:
@@ -82,34 +68,26 @@ class PredictScoreline(object):
         # opposite to the team_label passed
         alt_team_label = "away" if team_label == "home" else "home"
 
-        team_df = results_df[results_df["{}_team".format(team_label)].isin(team_name)]
+        team_df = results_df[results_df["{}_team".format(team_label)] == team_name]
 
         # Aggregation
         team_df = (
             team_df.groupby("{}_team".format(team_label))
             .agg(
                 played=pd.NamedAgg(column="date", aggfunc="nunique"),
-                goals_for=pd.NamedAgg(
-                    column="{}_score".format(team_label), aggfunc="sum"
-                ),
-                goals_against=pd.NamedAgg(
-                    column="{}_score".format(alt_team_label), aggfunc="sum"
-                ),
+                goals_for=pd.NamedAgg(column="{}_score".format(team_label), aggfunc="sum"),
+                goals_against=pd.NamedAgg(column="{}_score".format(alt_team_label), aggfunc="sum"),
             )
             .reset_index()
         )
 
         # average interval of Poisson Process. Here, goals scored & conceded
         team_df["goals_per_game_scored"] = team_df["goals_for"] / team_df["played"]
-        team_df["goals_per_game_conceded"] = (
-            team_df["goals_against"] / team_df["played"]
-        )
+        team_df["goals_per_game_conceded"] = team_df["goals_against"] / team_df["played"]
 
         return team_df
 
-    def goal_summaries(
-        self, teams_df: pd.DataFrame, team_label: str, team_name: str
-    ) -> float:
+    def goal_summaries(self, teams_df: pd.DataFrame, team_label: str, team_name: str) -> float:
         """calculates point estimates of goals scored and conceded
 
         Args:
@@ -121,12 +99,12 @@ class PredictScoreline(object):
             dict
         """
         avg_gpg_scored = teams_df["goals_per_game_scored"].mean()
-        avg_team_gpg_scored = teams_df[
-            teams_df["{}_team".format(team_label)] == team_name
-        ]["goals_per_game_scored"].squeeze()
-        avg_team_gpg_conceded = teams_df[
-            teams_df["{}_team".format(team_label)] == team_name
-        ]["goals_per_game_conceded"].squeeze()
+        avg_team_gpg_scored = teams_df[teams_df["{}_team".format(team_label)] == team_name][
+            "goals_per_game_scored"
+        ].squeeze()
+        avg_team_gpg_conceded = teams_df[teams_df["{}_team".format(team_label)] == team_name][
+            "goals_per_game_conceded"
+        ].squeeze()
 
         return {
             "avg_gpg_scored": avg_gpg_scored,
@@ -144,25 +122,13 @@ class PredictScoreline(object):
         Returns:
             float: projected goals
         """
-        home_attack = (
-            home_goals_dict["avg_team_gpg_scored"] / home_goals_dict["avg_gpg_scored"]
-        )
-        away_defence = (
-            away_goals_dict["avg_team_gpg_conceded"] / home_goals_dict["avg_gpg_scored"]
-        )
-        away_attack = (
-            away_goals_dict["avg_team_gpg_scored"] / away_goals_dict["avg_gpg_scored"]
-        )
-        home_defence = (
-            home_goals_dict["avg_team_gpg_conceded"] / away_goals_dict["avg_gpg_scored"]
-        )
+        home_attack = home_goals_dict["avg_team_gpg_scored"] / home_goals_dict["avg_gpg_scored"]
+        away_defence = away_goals_dict["avg_team_gpg_conceded"] / home_goals_dict["avg_gpg_scored"]
+        away_attack = away_goals_dict["avg_team_gpg_scored"] / away_goals_dict["avg_gpg_scored"]
+        home_defence = home_goals_dict["avg_team_gpg_conceded"] / away_goals_dict["avg_gpg_scored"]
 
-        projected_home_goals = (
-            home_attack * away_defence * home_goals_dict["avg_gpg_scored"]
-        )
-        projected_away_goals = (
-            away_attack * home_defence * away_goals_dict["avg_gpg_scored"]
-        )
+        projected_home_goals = home_attack * away_defence * home_goals_dict["avg_gpg_scored"]
+        projected_away_goals = away_attack * home_defence * away_goals_dict["avg_gpg_scored"]
 
         return projected_home_goals, projected_away_goals
 
@@ -184,9 +150,7 @@ class PredictScoreline(object):
 
         return goal_prob_df, goal_prob_list
 
-    def expected_scoreline(
-        self, away_goal_prob_df: pd.Series, home_goal_prob_list: list
-    ) -> pd.DataFrame:
+    def expected_scoreline(self, away_goal_prob_df: pd.Series, home_goal_prob_list: list) -> pd.DataFrame:
         """returns the matrix of probable scorelines, ranging from 0-0 to 8-8
 
         Args:
@@ -206,9 +170,7 @@ class PredictScoreline(object):
         # the loop tries to perform A * B.T operation, where A and B are n*1 matrices
         for i, home_goal in enumerate(home_goal_prob_list):
             temp_df = home_goal * away_goal_prob_df
-            expected_scoreline_df = pd.concat(
-                (expected_scoreline_df, temp_df), axis=1
-            ).rename(columns={0: str(i)})
+            expected_scoreline_df = pd.concat((expected_scoreline_df, temp_df), axis=1).rename(columns={0: str(i)})
             mx_prob = max(temp_df)
 
             # if mx_prob is greater than max_probability, overwrite it
@@ -231,3 +193,6 @@ class PredictScoreline(object):
             draw_probability += dr_prob
 
         return expected_scoreline_df
+
+
+predict_score = PredictScoreline()
