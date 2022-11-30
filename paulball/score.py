@@ -3,7 +3,7 @@ from math import exp, factorial
 import pandas as pd
 from rich import print as rich_print
 
-from paulball.utils import get_data
+from paulball.utils import DataPrep
 
 
 class PredictScoreline(object):
@@ -26,7 +26,8 @@ class PredictScoreline(object):
 
     def execute(self):
         """driver method"""
-        results_df = get_data()
+        dp_obj = DataPrep()
+        results_df = dp_obj.execute()
 
         # home and away team aggregated data
         home_team_df = self.team_record_aggregation(results_df, team_label="home", team_name=self.home_team)
