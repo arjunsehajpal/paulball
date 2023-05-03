@@ -1,45 +1,16 @@
 import os
+from datetime import datetime, timedelta
+from random import randrange
+
 import pandas as pd
 
 
 class DataPrep(object):
-    def __init__(self, start_date: str = "2018-08-01", end_date: str = "2022-11-20"):
+    def __init__(self, results_data_path, qualified_teams, start_date, end_date):
+        self.RESULT_DATA_PATH = results_data_path
+        self.QUALIFIED_TEAMS = qualified_teams
         self.DATA_START_DATE = start_date
         self.DATA_END_DATE = end_date
-        self.QUALIFIED_TEAMS = [
-            "Australia",
-            "Iran",
-            "Japan",
-            "Qatar",
-            "Saudi Arabia",
-            "South Korea",
-            "Cameroon",
-            "Ghana",
-            "Morocco",
-            "Senegal",
-            "Tunisia",
-            "Canada",
-            "Costa Rica",
-            "Mexico",
-            "United States",
-            "Argentina",
-            "Brazil",
-            "Ecuador",
-            "Uruguay",
-            "Belgium",
-            "Croatia",
-            "Denmark",
-            "England",
-            "France",
-            "Germany",
-            "Netherlands",
-            "Poland",
-            "Portugal",
-            "Serbia",
-            "Spain",
-            "Switzerland",
-            "Wales",
-        ]
 
     def execute(self):
         """driver method"""
@@ -56,9 +27,7 @@ class DataPrep(object):
         Returns:
             pandas.DataFrame: results of teams qualified for 2022 FIFA World Cup
         """
-
-        results_path = os.path.join("data", "internationals", "results.csv")
-        results_df = pd.read_csv(results_path, parse_dates=["date"])
+        results_df = pd.read_csv(self.RESULT_DATA_PATH, parse_dates=["date"])
         results_df = results_df[results_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
 
         qualified_df = results_df[
@@ -151,3 +120,30 @@ class DataPrep(object):
         )
 
         return points_df
+    
+
+def get_random_date(start_date:str, end_date:str) -> datetime:
+    """returns a random date between start_date and end_date.
+    If the returned date is less than three months away from end_date,
+    the function returns a date 3 months prior to end_date.
+
+    Args:
+        start_date (str)
+        end_date (str)
+
+    Returns:
+        datetime
+    """
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(end_date, "%Y-%m-%d")
+
+    date_diff = end_date - start_date
+    int_diff = date_diff.days
+
+    # sanity check: difference shouldn't be less than 90
+    # or three months as that could result in team not having played any match
+    if int_diff < 90:
+        int_diff = 90
+
+    random_days = randrange(int_diff)
+    return start_date + timedelta(days=random_days)
