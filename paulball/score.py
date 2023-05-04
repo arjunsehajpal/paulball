@@ -18,15 +18,31 @@ class PredictScoreline(object):
     def __init__(self):
         pass
 
-    def __call__(self, home_team: str, away_team: str, neutral: bool = False):
+    def __call__(
+        self,
+        home_team: str,
+        away_team: str,
+        neutral: bool,
+        results_data_path: str,
+        qualified_teams: list,
+        start_date: str,
+        end_date: str,
+    ):
         self.home_team = home_team
         self.away_team = away_team
         self.neutral = neutral
-        self.execute()
+        self.results_data_path = results_data_path
+        self.qualified_teams = qualified_teams
+        self.start_date = start_date
+        self.end_date = end_date
+
+        score_tuple = self.execute()
+
+        return score_tuple
 
     def execute(self):
         """driver method"""
-        dp_obj = DataPrep()
+        dp_obj = DataPrep(self.results_data_path, self.qualified_teams, self.start_date, self.end_date)
         results_df = dp_obj.execute()
 
         # home and away team aggregated data
@@ -39,21 +55,15 @@ class PredictScoreline(object):
 
         # projected goals
         projected_home_goals, projected_away_goals = self.projected_goals(home_goals_dict, away_goals_dict)
-        rich_print(
-            "{} {:.2f}-{:.2f} {}".format(
-                self.home_team,
-                projected_home_goals,
-                projected_away_goals,
-                self.away_team,
-            )
-        )
 
         # probability distribution of number of goals that can be scored
         home_goal_prob_df, home_goal_prob_list = self.teams_goals_probability(projected_home_goals)
         away_goal_prob_df, away_goal_prob_list = self.teams_goals_probability(projected_away_goals)
 
         # scoreline matrix
-        expected_scoreline_df = self.expected_scoreline(away_goal_prob_df, home_goal_prob_list)
+        _ = self.expected_scoreline(away_goal_prob_df, home_goal_prob_list)
+
+        return (projected_home_goals, projected_away_goals)
 
     def team_record_aggregation(self, results_df: pd.DataFrame, team_label: str, team_name: str) -> pd.DataFrame:
         """aggregates the goal scored and conceded by a Team
@@ -186,7 +196,7 @@ class PredictScoreline(object):
 
             # sum of probability where home score < away score
             if i < len(home_goal_prob_list):
-                aw_prob = sum(temp_df.iloc[i + 1 :])
+                aw_prob = sum(temp_df.iloc[i + 1:])
 
             # running sums
             home_win_probability += hw_prob

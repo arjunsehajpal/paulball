@@ -27,6 +27,7 @@ class DataPrep(object):
         Returns:
             pandas.DataFrame: results of teams qualified for 2022 FIFA World Cup
         """
+        # TODO: read data outside dataprep, as simulation might lead to multiple read write operations 
         results_df = pd.read_csv(self.RESULT_DATA_PATH, parse_dates=["date"])
         results_df = results_df[results_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
 
@@ -42,8 +43,10 @@ class DataPrep(object):
         Returns:
             pandas.DataFrame: historical rankings and rating points of teams
         """
+        # TODO: read data outside dataprep
         rankings_path = os.path.join("data", "internationals", "rankings-2022-10-06.csv")
         rankings_df = pd.read_csv(rankings_path, parse_dates=["rank_date"])
+
         rankings_df = rankings_df.rename(columns={"rank_date": "date"})
         rankings_df = rankings_df[rankings_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
 
@@ -53,6 +56,8 @@ class DataPrep(object):
 
         # create start and end date for which rankings are valid
         rankings_df["end_date"] = rankings_df.groupby("country_full")["date"].shift(-1)
+
+        # TODO: in fillna, instead of explicit value, fill `end_date`
         rankings_df["end_date"] = rankings_df["end_date"].fillna("2022-11-20")
         rankings_df = rankings_df.rename(columns={"date": "start_date"})
 
@@ -146,4 +151,5 @@ def get_random_date(start_date:str, end_date:str) -> datetime:
         int_diff = 90
 
     random_days = randrange(int_diff)
-    return start_date + timedelta(days=random_days)
+    random_date = start_date + timedelta(days=random_days)
+    return random_date.strftime("%Y-%m-%d")
