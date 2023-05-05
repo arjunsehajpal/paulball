@@ -153,3 +153,14 @@ def get_random_date(start_date:str, end_date:str) -> datetime:
     random_days = randrange(int_diff)
     random_date = start_date + timedelta(days=random_days)
     return random_date.strftime("%Y-%m-%d")
+
+
+def monte_carlo_simulation(n_simulations):
+    def simulate(func):
+        def wrapper():
+            results = []
+            for i in range(0, n_simulations):
+                results.append(func())
+            return results
+        return wrapper
+    return simulate
