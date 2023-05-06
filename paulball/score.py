@@ -1,9 +1,9 @@
 from math import exp, factorial
 
+import numpy as np
 import pandas as pd
-from rich import print as rich_print
 
-from paulball.utils import DataPrep
+from paulball.utils import DataPrep, get_random_date, monte_carlo_simulation
 
 
 class PredictScoreline(object):
@@ -23,7 +23,8 @@ class PredictScoreline(object):
         home_team: str,
         away_team: str,
         neutral: bool,
-        results_data_path: str,
+        results_df: pd.DataFrame,
+        rankings_df: pd.DataFrame,
         qualified_teams: list,
         start_date: str,
         end_date: str,
@@ -31,7 +32,8 @@ class PredictScoreline(object):
         self.home_team = home_team
         self.away_team = away_team
         self.neutral = neutral
-        self.results_data_path = results_data_path
+        self.results_df = results_df
+        self.rankings_df = rankings_df
         self.qualified_teams = qualified_teams
         self.start_date = start_date
         self.end_date = end_date
@@ -42,7 +44,7 @@ class PredictScoreline(object):
 
     def execute(self):
         """driver method"""
-        dp_obj = DataPrep(self.results_data_path, self.qualified_teams, self.start_date, self.end_date)
+        dp_obj = DataPrep(self.results_df, self.rankings_df, self.qualified_teams, self.start_date, self.end_date)
         results_df = dp_obj.execute()
 
         # home and away team aggregated data
@@ -196,7 +198,7 @@ class PredictScoreline(object):
 
             # sum of probability where home score < away score
             if i < len(home_goal_prob_list):
-                aw_prob = sum(temp_df.iloc[i + 1:])
+                aw_prob = sum(temp_df.iloc[i + 1 :])
 
             # running sums
             home_win_probability += hw_prob
@@ -207,3 +209,51 @@ class PredictScoreline(object):
 
 
 predict_score = PredictScoreline()
+
+
+@monte_carlo_simulation(100)
+def match_simulator(home_team, away_team, result_df, rankings_df, Configurations, neutral=True):
+    """simulates the result of a match multiple times.
+    The start date is updated
+
+    Returns:
+        results (list[tuple]): a list of all the simulated results
+    """
+    current_iter_start_date = get_random_date(Configurations.START_DATE, Configurations.END_DATE)
+    try:
+        results = predict_score(
+            home_team=home_team,
+            away_team=away_team,
+            neutral=neutral,
+            results_df=result_df,
+            rankings_df=rankings_df,
+            qualified_teams=Configurations.QUALFIED_TEAMS,
+            start_date=current_iter_start_date,
+            end_date=Configurations.END_DATE,
+        )
+        return results
+    except TypeError as T:
+        print("encountered following error:\n", T)
+        return (np.nan, np.nan)
+
+
+def predict_final_score(home_team, away_team, config, neutral=True):
+    """predicts the final score of the match.
+    This function is a wrapper on match_simulator.
+
+    Args:
+        home_team (str): home team
+        away_team (str): away team
+        config (callable): a class capturing all the config variables
+        neutral (bool, optional): if the match if being played at a Neutral venue or not. Defaults to True.
+
+    Returns:
+        tuple: aggregated match result
+    """
+    result_df = pd.read_csv(config.RESULT_DATA_PATH)
+    rankings_df = pd.read_csv(config.RANKINGS_DATA_PATH, parse_dates=["rank_date"])
+
+    results = match_simulator(home_team, away_team, result_df, rankings_df, config)
+    home_team_score_list, away_team_score_list = zip(*results)
+    home_team_score, away_team_score = np.nanmean(home_team_score_list), np.nanmean(away_team_score_list)
+    print("{} {:.2f}-{:.2f} {}".format(home_team, home_team_score, away_team_score, away_team))
