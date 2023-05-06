@@ -6,128 +6,100 @@ import pandas as pd
 
 
 class DataPrep(object):
-    def __init__(self, results_data_path, qualified_teams, start_date, end_date):
-        self.RESULT_DATA_PATH = results_data_path
+    def __init__(self, results_df, rankings_df, qualified_teams, start_date, end_date):
+        self.results_df = results_df
+        self.rankings_df = rankings_df
         self.QUALIFIED_TEAMS = qualified_teams
         self.DATA_START_DATE = start_date
         self.DATA_END_DATE = end_date
 
     def execute(self):
         """driver method"""
-        results_df = self.get_results_data()
-        rankings_df = self.get_rankings_data()
-        points_df = self.join_results_ratings_data(results_df, rankings_df)
-        points_df = self.adjusted_goals(points_df)
+        self.process_results_data()
+        self.process_rankings_data()
+        self.join_results_ratings_data()
+        self.adjusted_goals()
 
-        return points_df
+        return self.points_df
 
-    def get_results_data(self):
-        """gets historical results data
+    def process_results_data(self):
+        """processes historical results data"""
+        self.results_df = self.results_df[self.results_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
 
-        Returns:
-            pandas.DataFrame: results of teams qualified for 2022 FIFA World Cup
-        """
-        # TODO: read data outside dataprep, as simulation might lead to multiple read write operations 
-        results_df = pd.read_csv(self.RESULT_DATA_PATH, parse_dates=["date"])
-        results_df = results_df[results_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
-
-        qualified_df = results_df[
-            results_df["home_team"].isin(self.QUALIFIED_TEAMS) | results_df["away_team"].isin(self.QUALIFIED_TEAMS)
+        self.results_df = self.results_df[
+            self.results_df["home_team"].isin(self.QUALIFIED_TEAMS)
+            | self.results_df["away_team"].isin(self.QUALIFIED_TEAMS)
         ]
 
-        return qualified_df
-
-    def get_rankings_data(self):
-        """get historical rankings data
-
-        Returns:
-            pandas.DataFrame: historical rankings and rating points of teams
-        """
-        # TODO: read data outside dataprep
-        rankings_path = os.path.join("data", "internationals", "rankings-2022-10-06.csv")
-        rankings_df = pd.read_csv(rankings_path, parse_dates=["rank_date"])
-
-        rankings_df = rankings_df.rename(columns={"rank_date": "date"})
-        rankings_df = rankings_df[rankings_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
+    def process_rankings_data(self):
+        """processes historical rankings data"""
+        self.rankings_df = self.rankings_df.rename(columns={"rank_date": "date"})
+        self.rankings_df = self.rankings_df[self.rankings_df["date"].between(self.DATA_START_DATE, self.DATA_END_DATE)]
 
         # mismatched country spellings with results_df
         rankings_rename_country_dict = {"USA": "United States", "Korea Republic": "South Korea", "IR Iran": "Iran"}
-        rankings_df["country_full"] = rankings_df["country_full"].replace(rankings_rename_country_dict)
+        self.rankings_df["country_full"] = self.rankings_df["country_full"].replace(rankings_rename_country_dict)
 
         # create start and end date for which rankings are valid
-        rankings_df["end_date"] = rankings_df.groupby("country_full")["date"].shift(-1)
+        self.rankings_df["end_date"] = self.rankings_df.groupby("country_full")["date"].shift(-1)
 
-        # TODO: in fillna, instead of explicit value, fill `end_date`
-        rankings_df["end_date"] = rankings_df["end_date"].fillna("2022-11-20")
-        rankings_df = rankings_df.rename(columns={"date": "start_date"})
+        self.rankings_df["end_date"] = self.rankings_df["end_date"].fillna(self.DATA_END_DATE)
+        self.rankings_df = self.rankings_df.rename(columns={"date": "start_date"})
 
-        return rankings_df
-
-    def join_results_ratings_data(self, results_df: pd.DataFrame, rankings_df: pd.DataFrame) -> pd.DataFrame:
-        """_summary_
-
-        Args:
-            results_df (pd.DataFrame): _description_
-            rankings_df (pd.DataFrame): _description_
-
-        Returns:
-            pd.DataFrame: _description_
+    def join_results_ratings_data(self) -> pd.DataFrame:
+        """joins results data with the rankings data.
+        Because, rankings are assigned at some time interval,
+        all the matches occuring between old ranking and
+        new ranking are assigned old rankings.
         """
         # Home team
-        points_df = results_df.merge(
-            rankings_df[["country_full", "rank", "total_points", "start_date", "end_date"]],
+        self.points_df = self.results_df.merge(
+            self.rankings_df[["country_full", "rank", "total_points", "start_date", "end_date"]],
             left_on=["home_team"],
             right_on=["country_full"],
             how="left",
         ).query("date.between(start_date, end_date)")
-        points_df = points_df.rename(
+        self.points_df = self.points_df.rename(
             columns={
                 "rank": "home_rank",
                 "total_points": "home_points",
             }
         )
-        points_df = points_df.drop(columns=["start_date", "end_date", "country_full"])
+        self.points_df = self.points_df.drop(columns=["start_date", "end_date", "country_full"])
 
         # Away team
-        points_df = points_df.merge(
-            rankings_df[["country_full", "rank", "total_points", "start_date", "end_date"]],
+        self.points_df = self.points_df.merge(
+            self.rankings_df[["country_full", "rank", "total_points", "start_date", "end_date"]],
             left_on=["away_team"],
             right_on=["country_full"],
             how="left",
         ).query("date.between(start_date, end_date)")
-        points_df = points_df.rename(
+        self.points_df = self.points_df.rename(
             columns={
                 "rank": "away_rank",
                 "total_points": "away_points",
             }
         )
-        points_df = points_df.drop(columns=["start_date", "end_date", "country_full"])
+        self.points_df = self.points_df.drop(columns=["start_date", "end_date", "country_full"])
 
-        return points_df
-
-    def adjusted_goals(self, points_df: pd.DataFrame) -> pd.DataFrame:
+    def adjusted_goals(self) -> pd.DataFrame:
         """adjusts the goals scored by a team based on quality of opposition
-
-        Args:
-            points_df (pd.DataFrame): dataframe with team scores and ratings
 
         Returns:
             pd.DataFrame: dataframe with additional columns of adjusted goals
         """
-        points_df.loc[:, "adj_home_score"] = (points_df["home_score"] * points_df["away_points"]) / (
-            points_df["home_points"]
+        self.points_df.loc[:, "adj_home_score"] = (self.points_df["home_score"] * self.points_df["away_points"]) / (
+            self.points_df["home_points"]
         )
-        points_df.loc[:, "adj_away_score"] = (points_df["away_score"] * points_df["home_points"]) / (
-            points_df["away_points"]
+        self.points_df.loc[:, "adj_away_score"] = (self.points_df["away_score"] * self.points_df["home_points"]) / (
+            self.points_df["away_points"]
         )
-        points_df = points_df.drop(columns=["home_score", "away_score"]).rename(
+        self.points_df = self.points_df.drop(columns=["home_score", "away_score"]).rename(
             columns={"adj_home_score": "home_score", "adj_away_score": "away_score"}
         )
 
-        return points_df
-    
 
-def get_random_date(start_date:str, end_date:str) -> datetime:
+def get_random_date(start_date: str, end_date: str) -> datetime:
     """returns a random date between start_date and end_date.
     If the returned date is less than three months away from end_date,
     the function returns a date 3 months prior to end_date.
@@ -137,7 +109,7 @@ def get_random_date(start_date:str, end_date:str) -> datetime:
         end_date (str)
 
     Returns:
-        datetime
+        str: a random
     """
     start_date = datetime.strptime(start_date, "%Y-%m-%d")
     end_date = datetime.strptime(end_date, "%Y-%m-%d")
@@ -156,11 +128,19 @@ def get_random_date(start_date:str, end_date:str) -> datetime:
 
 
 def monte_carlo_simulation(n_simulations):
+    """a decorator to run a function multiple times.
+
+    Returns:
+        list
+    """
+
     def simulate(func):
-        def wrapper():
+        def wrapper(home_team, away_team, result_df, rankings_df, Configurations, neutral=True):
             results = []
             for i in range(0, n_simulations):
-                results.append(func())
+                results.append(func(home_team, away_team, result_df, rankings_df, Configurations, neutral=True))
             return results
+
         return wrapper
+
     return simulate
